@@ -1,0 +1,205 @@
+---
+- hosts: all
+  user: vagrant
+  tasks:
+    - action: ping
+
+    - apt: update_cache=yes
+      become: yes
+
+    - name: Setup PPAs
+      apt_repository: repo={{ item }}
+      become: yes
+      with_items:
+        - "ppa:ondrej/php5-5.6"
+        - "ppa:ondrej/apache2"
+        - "ppa:chris-lea/node.js"
+
+    - name: apt-get update
+      apt: update_cache=yes
+      become: yes
+
+    - name: Install Various packages
+      apt: name={{ item }} state=latest
+      become: yes
+      with_items:
+        - "python-software-properties"
+        - "python-mysqldb"
+        - "build-essential"
+        - "vim"
+        - "curl"
+        - "apache2"
+        - "libapache2-mod-php5"
+        - "git"
+        - "redis-server"
+        - "php5"
+        - "php5-cli"
+        - "php5-mysql"
+        - "php5-curl"
+        - "php5-mcrypt"
+        - "php5-json"
+        - "php5-gd"
+        - "php5-redis"
+        - "php5-sqlite"
+        - "mysql-server-5.6"
+        - "nodejs"
+        - "ruby"
+        - "ruby-sass"
+        - "htop"
+        - "tree"
+
+
+    - name: Configure apache2 to have a default ServerName
+      lineinfile: dest=/etc/apache2/apache2.conf regexp="^ServerName" line="ServerName localhost" state=present
+      become: yes
+
+    - name: Configure apache2 to use the vagrant user
+      lineinfile: dest=/etc/apache2/envvars regexp="^export APACHE_RUN_USER" line="export APACHE_RUN_USER=vagrant" state=present
+      become: yes
+
+    - name: Configure apache2 to use the vagrant group
+      lineinfile: dest=/etc/apache2/envvars regexp="^export APACHE_RUN_GROUP" line="export APACHE_RUN_GROUP=vagrant" state=present
+      become: yes
+
+    - name: Enable modules
+      apache2_module: name={{ item }} state=present
+      become: yes
+      with_items:
+        - rewrite
+        - deflate
+        - expires
+        - headers
+
+    - name: Disable modules
+      apache2_module: name={{ item }} state=absent
+      become: yes
+      with_items:
+        - cgi
+        - status
+
+    - name: Restart Apache
+      action: service name=apache2 state=restarted
+      become: yes
+
+    - name: Disable update-rc.d
+      shell: update-rc.d -f apache2 remove
+      become: yes
+
+    - name: Enable update-rc.d for booting apache
+      shell: update-rc.d apache2 defaults
+      become: yes
+
+    - name: Ignore file modes
+      shell: git config --global core.fileMode false
+      become: yes
+
+    - name: Use vim by default
+      shell: git config --global core.editor "vim"
+      become: yes
+
+    - name: Set display errors on
+      ini_file: dest=/etc/php5/apache2/php.ini section=PHP option=display_errors value=On backup=yes
+      become: yes
+
+    - name: Set error_reporting
+      ini_file: dest=/etc/php5/apache2/php.ini section=PHP option=error_reporting value="E_ALL ^ E_DEPRECATED ^ E_STRICT ^ E_USER_DEPRECATED" backup=yes
+      become: yes
+
+    - name: Set POST max size to 1024M
+      ini_file: dest=/etc/php5/apache2/php.ini section=PHP option=post_max_size value="1024M" backup=yes
+      become: yes
+
+    - name: Set memory limit to 1024M
+      ini_file: dest=/etc/php5/apache2/php.ini section=PHP option=memory_limit value="1024M" backup=yes
+      become: yes
+
+    - name: Set upload_max_filesize to 1024M
+      ini_file: dest=/etc/php5/apache2/php.ini section=PHP option=upload_max_filesize value="1024M" backup=yes
+      become: yes
+
+    - name: Symlink nodejs
+      file: src=/usr/bin/nodejs dest=/usr/bin/node state=link
+      become: yes
+
+    - name: Create npm-global directory
+      file: path=/home/npm-global state=directory mode=775 recurse=yes owner=vagrant group=vagrant
+      become: yes
+
+    - name: Ensure the environment variable for NPM_CONFIG_PREFIX is correct
+      lineinfile: "dest=/etc/environment create=yes state=present regexp='^NPM_CONFIG_PREFIX' line='NPM_CONFIG_PREFIX=/home/npm-global'"
+      become: yes
+
+    - name: Disable default init.d for redis
+      shell: update-rc.d redis-server disable
+      become: yes
+
+    - name: Start redis on boot
+      template: src=./templates/redis-server.conf.j2 dest=/etc/init/redis-server.conf
+      become: yes
+
+    - name: Dont daemonize redis
+      lineinfile: dest=/etc/redis/redis.conf regexp="^daemonize yes" line="daemonize no" state=present
+      become: yes
+
+    - name: Create gem directory
+      file: path=/home/gems state=directory mode=775 recurse=yes owner=vagrant group=vagrant
+      become: yes
+
+    - name: Ensure the environment variable for GEM_HOME is correct
+      lineinfile: "dest=/etc/environment create=yes state=present regexp='^GEM_HOME' line='GEM_HOME=/home/gems'"
+      become: yes
+
+    - name: install composer
+      become: yes
+      shell: curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin creates=/usr/local/bin/composer
+
+    - name: rename composer.phar to composer
+      shell: mv /usr/local/bin/composer.phar /usr/local/bin/composer creates=/usr/local/bin/composer
+      become: yes
+
+    - name: make composer executable
+      file: path=/usr/local/bin/composer mode=a+x state=file
+      become: yes
+
+    - name: Flush redis with flush command
+      lineinfile: dest=/home/vagrant/.bashrc line="alias flush='redis-cli flushall'" regexp='^alias flush' state=present create=True insertafter=EOF
+
+    - name: setup alias for vhosts
+      lineinfile: dest=/home/vagrant/.bashrc line="alias v='cd /var/www/vhosts'" regexp='^alias v' state=present create=True insertafter=EOF
+
+    - name: Ensure the database exists
+      mysql_db: state=present name=atlas
+      become: yes
+
+    - name: Ensure folders exist
+      file: path=/var/www/vhosts/{{ item }} state=directory owner=vagrant group=vagrant mode=775
+      become: yes
+      with_items:
+        - adminer
+        - atlas
+
+    - name: Ensure the git repo is synced / present
+      action: git repo=https://github.com/getatlas/atlas.git dest=/var/www/vhosts/atlas accept_hostkey=yes
+      ignore_errors: yes
+
+    - name: Install adminer
+      get_url: url=http://www.adminer.org/latest.php dest=/var/www/vhosts/adminer/index.php mode=644
+
+    - name: Setup the Virtual Host for Atlas
+      template: src=templates/virtual-host-atlas.j2 dest=/etc/apache2/sites-available/atlas.dev.conf
+      become: yes
+
+    - name: Setup the Virtual Host for Adminer
+      template: src=templates/virtual-host-adminer.j2 dest=/etc/apache2/sites-available/adminer.atlas.dev.conf
+      become: yes
+
+    - name: Enable virtual hosts
+      command: a2ensite {{ item }}.conf
+      become: yes
+      with_items:
+        - atlas.dev
+        - adminer.atlas.dev
+
+    - name: Restart Apache
+      action: service name=apache2 state=restarted
+      become: yes

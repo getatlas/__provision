@@ -1,0 +1,9 @@
+<VirtualHost *:80>
+    ServerName adminer.atlas.dev
+    DocumentRoot /var/www/vhosts/adminer
+    ErrorLog ${APACHE_LOG_DIR}/error.log
+    CustomLog ${APACHE_LOG_DIR}/access.log combined
+    <Directory /var/www/vhosts/adminer>
+        AllowOverride All
+    </Directory>
+</VirtualHost>

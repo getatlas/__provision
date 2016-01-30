@@ -1,0 +1,9 @@
+<VirtualHost *:80>
+    ServerName atlas.dev
+    DocumentRoot /var/www/vhosts/atlas/public
+    ErrorLog ${APACHE_LOG_DIR}/error.log
+    CustomLog ${APACHE_LOG_DIR}/access.log combined
+    <Directory /var/www/vhosts/atlas>
+        AllowOverride All
+    </Directory>
+</VirtualHost>

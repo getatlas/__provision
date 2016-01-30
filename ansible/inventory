@@ -1,0 +1,4 @@
+atlas-dev ansible_ssh_user=vagrant ansible_ssh_host=192.168.55.77 ansible_ssh_port=22
+
+[vagrant]
+atlas-dev
